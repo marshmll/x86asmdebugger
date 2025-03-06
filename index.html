@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/assets/styles/reset.css">
+    <link rel="stylesheet" href="/assets/styles/index.css">
+    <title>x86 Debugger</title>
+</head>
+
+<body>
+    <header class="header">
+        <h1 class="header__title">x86 Assembly Debugger</h1>
+    </header>
+    <main class="main">
+        <section class="code_editor">
+            <h2 class="section__title code_editor__title">Code Editor</h2>
+            <textarea class="code_editor__textarea" name="code" id="code"></textarea>
+        </section>
+        <div class="emulation">
+            <h2 class="section__title controls_title">Controls</h2>
+            <section class="controls">
+                <button class="controls__button controls__button--play" title="Play">
+                    <img src="/assets/images/play.svg" alt="play">
+                </button>
+                <button class="controls__button controls__button--pause" title="Pause">
+                    <img src="/assets/images/pause.svg" alt="pause">
+                </button>
+                <button class="controls__button controls__button--step" title="Step">
+                    <img src="/assets/images/step.svg" alt="step">
+                </button>
+                <button class="controls__button controls__button--reset" title="Reset">
+                    <img src="/assets/images/reset.svg" alt="reset">
+                </button>
+                <div class="labeled_input">
+                    <label for="tick_speed">Tick Speed: 500 ms</label>
+                    <input class="tick_speed" type="range" name="tick_speed" id="tick_speed" min="20" max="1000" value="500"
+                        title="Tick Speed" tabindex="-1">
+                </div>
+            </section>
+            <h2 class="section__title cpu_info_title">CPU State</h2>
+            <div class="cpu_info">
+                <table class="cpu_info__table"></table>
+            </div>
+        </div>
+    </main>
+    <script type="module" src="/assets/scripts/execute.js"></script>
+</body>
+
+</html>

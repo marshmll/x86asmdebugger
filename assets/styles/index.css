@@ -1,0 +1,111 @@
+.header {
+  width: 100%;
+  padding: 1.8rem 2rem;
+  background-color: #b91717;
+}
+
+.header__title {
+  font-size: 1.7rem;
+  color: white;
+  font-weight: bold;
+}
+
+.main {
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-direction: row;
+}
+
+.code_editor {
+  width: 49%;
+  padding: 1rem;
+  box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;
+}
+
+.section__title {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  padding: 0.5rem;
+}
+
+.code_editor__textarea {
+  width: 99%;
+  resize: vertical;
+  height: 70vh;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.emulation {
+  width: 49%;
+  padding: 1rem;
+  box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.controls__button {
+  height: 2rem;
+  width: 2rem;
+  margin-right: 0.8rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+
+  img {
+    width: auto;
+    height: 70%;
+  }
+}
+
+.controls__button--play {
+  background-color: green;
+}
+
+.controls__button--pause {
+  background-color: #747418;
+}
+
+.controls__button--step {
+  background-color: #181a74;
+}
+
+.controls__button--reset {
+  background-color: #741818;
+}
+
+.labeled_input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: column;
+}
+
+.tick_speed {
+  width: 15rem;
+}
+
+.cpu_info__table {
+  th,
+  td {
+    border: 1px solid black;
+    padding: 0.5rem 0.8rem;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    max-width: 10rem;
+    overflow-x: scroll;
+    scrollbar-width: none;
+  }
+}
