@@ -115,19 +115,14 @@ stepButton.addEventListener("click", (e) => {
   console.log(cpu.getCurrentLine(editor.getValue()));
   errorContainer.classList.add("hidden");
 
-  cpu.prepare(editor.getValue());
-  cpu.executeNextInstruction();
-
-  // try {
-  //   cpu.prepare(editor.getValue());
-  //   cpu.executeNextInstruction();
-  // } catch (e) {
-  //   errorParagraph.textContent = e;
-  //   errorContainer.classList.remove("hidden");
-  //   return;
-  // }
-
-  // console.log(cpu);
+  try {
+    cpu.prepare(editor.getValue());
+    cpu.executeNextInstruction();
+  } catch (e) {
+    errorParagraph.textContent = e;
+    errorContainer.classList.remove("hidden");
+    return;
+  }
 });
 
 resetButton.addEventListener("click", (e) => {
