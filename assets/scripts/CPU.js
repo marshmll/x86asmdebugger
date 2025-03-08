@@ -1,3 +1,6 @@
+export const B = 8;
+export const MB = 1024 * B;
+
 const REGISTERS_32 = [
   "eax",
   "ebx",
@@ -13,7 +16,17 @@ const REGISTERS_16 = ["ax", "bx", "cx", "dx", "si", "di", "bp", "sp"];
 const REGISTERS_8_HIGH = ["ah", "bh", "ch", "dh"];
 const REGISTERS_8_LOW = ["al", "bl", "cl", "dl"];
 
-class CPU {
+export const EFLAGS_BITMASKS = {
+  OVERFLOW: 0x0800,
+  DIRECTION: 0x4000,
+  SIGN: 0x080,
+  ZERO: 0x040,
+  AUXILIARY_CARRY: 0x0010,
+  PARITY: 0x0004,
+  CARRY: 0x0001,
+};
+
+export class CPU {
   eax;
   ebx;
   ecx;
@@ -21,15 +34,16 @@ class CPU {
   esi;
   edi;
   ebp;
-  eip;
   esp;
+  eip;
   eflags;
-  #pc;
+  #stackSize;
   #preparedTokens;
   #microcode;
   #stack;
 
-  constructor() {
+  constructor(stack_size) {
+    this.#stackSize = stack_size;
     this.#preparedTokens = [];
     this.#microcode = {
       mov: this.#mov.bind(this),
@@ -46,7 +60,9 @@ class CPU {
       jne: this.#jne.bind(this),
       jnz: this.#jne.bind(this),
       jg: this.#jg.bind(this),
+      jns: this.#jg.bind(this),
       jl: this.#jl.bind(this),
+      js: this.#jl.bind(this),
       and: this.#and.bind(this),
       or: this.#or.bind(this),
       xor: this.#xor.bind(this),
@@ -68,22 +84,36 @@ class CPU {
   executeNextInstruction() {
     if (this.#preparedTokens.length === 0) return;
 
-    if (this.#pc >= this.#preparedTokens.length) return;
+    if (this.eip >= this.#preparedTokens.length) return;
 
-    let instruction = this.#preparedTokens[this.#pc];
+    let instruction = this.#preparedTokens[this.eip];
 
     // Ignore labels
-    if (instruction.at(instruction.length - 1) == ":") {
-      this.#pc++;
+    if (instruction.endsWith(":")) {
+      this.eip++;
       return;
     }
 
+    // Strip inline comments (everything after ';')
+    instruction = instruction.split(";")[0].trim();
+
+    // Skip empty lines after stripping comments
+    if (instruction.length === 0) {
+      this.eip++;
+      return;
+    }
+
+    // Get the instruction handler
     const handler = this.#microcode[instruction];
 
     if (handler) {
-      this.#pc += handler(this.#preparedTokens, this.#pc);
+      let a = handler(this.#preparedTokens, this.eip);
+      console.log("handler returned " + a);
+      this.eip += a;
     } else {
-      alert(`Unknown instruction: ${instruction}`);
+      throw new SyntaxError(
+        `Unknown instruction: "${instruction}" at line ${this.getCurrentLine()}`
+      );
     }
   }
 
@@ -94,34 +124,155 @@ class CPU {
     this.edx = 0x00000000;
     this.esi = 0x00000000;
     this.edi = 0x00000000;
-    this.ebp = 0x00000000;
-    this.eip = 0x00000000;
-    this.esp = 0x00000000;
+    this.ebp = this.#stackSize;
+    this.esp = this.#stackSize;
     this.eflags = 0x00000000;
-    this.#pc = 0x00000000;
+    this.eip = 0;
     this.#stack = [];
   }
 
   getPC() {
-    return this.#pc;
+    return this.eip;
   }
 
   getRegisterValue(register) {
-    return this[register];
+    return this[register] & (Math.pow(2, 32) - 1);
   }
 
   getAvailableRegisters() {
     return REGISTERS_32;
   }
 
+  getCurrentLine(code) {
+    const lines = code.split("\n");
+    let tokenCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+
+      // Skip empty lines
+      if (line.length === 0) continue;
+
+      // Strip inline comments (everything after ';')
+      line = line.split(";")[0].trim();
+
+      // Skip lines that are empty after stripping comments
+      if (line.length === 0) continue;
+
+      // Split the line into tokens
+      const tokens = line.split(/\s+/).filter((token) => token.length > 0);
+
+      // Check if the PC falls within this line's tokens
+      if (this.eip >= tokenCount && this.eip < tokenCount + tokens.length) {
+        return i; // Return the line number (0-based index)
+      }
+
+      // Update the token count
+      tokenCount += tokens.length;
+    }
+
+    return -1; // No matching line found
+  }
+
   #tokenize(code) {
-    // Split code into tokens, handling commas and spaces
-    this.#preparedTokens = code
-      .split(/[\s,]+/)
-      .map((token) =>
-        token.at(token.length - 1) != ":" ? token.toLowerCase() : token
-      )
-      .filter((token) => token.length > 0);
+    const lines = code.split("\n");
+    this.#preparedTokens = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip empty lines and comments
+      if (line.length === 0 || line.startsWith(";")) continue;
+
+      // Handle labels
+      if (line.endsWith(":")) {
+        this.#preparedTokens.push(line);
+        continue;
+      }
+
+      // Split the line into tokens
+      const tokens = line.split(/\s+/).filter((token) => token.length > 0);
+      const instruction = tokens[0].toLowerCase();
+      const operands = tokens.slice(1).join(" ");
+
+      // Validate instructions that require commas
+      if (this.#requiresCommas(instruction)) {
+        if (!operands.includes(",")) {
+          throw new SyntaxError(
+            `Missing comma in instruction: "${line}" at line ${
+              i + 1
+            }\nExpected format: ${instruction} dest, src`
+          );
+        }
+
+        const [dest, src] = operands.split(",").map((op) => op.trim());
+
+        if (!dest || !src) {
+          throw new SyntaxError(
+            `Invalid operands in instruction: "${line}" at line ${
+              i + 1
+            }\nExpected format: ${instruction} dest, src`
+          );
+        }
+
+        // Validate operand types
+        if (!this.#isValidRegister(dest) && !this.#isImmediate(dest)) {
+          throw new SyntaxError(
+            `Invalid destination operand: ${dest} at line ${i + 1}`
+          );
+        }
+        if (!this.#isValidRegister(src) && !this.#isImmediate(src)) {
+          throw new SyntaxError(
+            `Invalid source operand: ${src} at line ${i + 1}`
+          );
+        }
+
+        this.#preparedTokens.push(instruction, dest, src);
+      } else {
+        // Handle instructions without commas
+
+        if (!this.#microcode[tokens[0]]) {
+          throw new SyntaxError(
+            `Unknown instruction: ${line} at line ${i + 1}`
+          );
+        }
+
+        if (tokens.length !== 2) {
+          throw new SyntaxError(
+            `Invalid number of operands in instruction: ${line} at line ${
+              i + 1
+            }`
+          );
+        }
+
+        const dest = tokens[1];
+        if (
+          !this.#isValidRegister(dest) &&
+          !this.#isImmediate(dest) &&
+          !code.includes(dest + ":")
+        ) {
+          throw new SyntaxError(`Invalid operand: ${dest} at line ${i + 1}`);
+        }
+
+        this.#preparedTokens.push(instruction, dest);
+      }
+    }
+  }
+
+  #requiresCommas(instruction) {
+    // List of instructions that require commas between operands
+    const commaInstructions = [
+      "mov",
+      "add",
+      "sub",
+      "cmp",
+      "and",
+      "or",
+      "xor",
+      "shl",
+      "shr",
+    ];
+    return commaInstructions.includes(instruction);
   }
 
   #getRegisterValue(reg) {
@@ -134,7 +285,9 @@ class CPU {
     } else if (REGISTERS_8_LOW.includes(reg)) {
       return this[`e${reg[0]}x`] & 0xff; // Lower 8 bits of 16-bit register
     } else {
-      alert(`Invalid register: ${reg}`);
+      throw new SyntaxError(
+        `Invalid register: "${reg}" at line ${this.getCurrentLine()}`
+      );
       return 0;
     }
   }
@@ -150,7 +303,9 @@ class CPU {
     } else if (REGISTERS_8_LOW.includes(reg)) {
       this[`e${reg[0]}x`] = (this[`e${reg[0]}x`] & 0xffffff00) | (value & 0xff); // Set lower 8 bits
     } else {
-      alert(`Invalid register: ${reg}`);
+      throw new SyntaxError(
+        `Invalid register: "${reg}" at line ${this.getCurrentLine()}`
+      );
     }
   }
 
@@ -159,16 +314,18 @@ class CPU {
     const src = tokens[pc + 2];
 
     // Move between registers
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
       const srcValue = this.#getRegisterValue(src);
       this.#setRegisterValue(dest, srcValue);
     }
     // Move immediate value to register
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
       const immediateValue = parseInt(src);
       this.#setRegisterValue(dest, immediateValue);
     } else {
-      alert(`Unsupported mov operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported mov operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 3; // Move to the next instruction (3 tokens: mov, dest, src)
@@ -179,18 +336,40 @@ class CPU {
     const src = tokens[pc + 2];
 
     // Add two registers
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
       const srcValue = this.#getRegisterValue(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue + srcValue);
     }
     // Add immediate value to register
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
       const immediateValue = parseInt(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue + immediateValue);
     } else {
-      alert(`Unsupported add operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported add operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
+    }
+
+    this.eflags = 0;
+    if (Math.abs(this.#getRegisterValue(dest) >= Math.pow(2, 32))) {
+      this.eflags |= EFLAGS_BITMASKS["OVERFLOW"];
+    }
+    if (this.#getRegisterValue(dest) < 0) {
+      this.eflags |= EFLAGS_BITMASKS["SIGN"];
+    }
+    if (this.#getRegisterValue(dest) == 0) {
+      this.eflags |= EFLAGS_BITMASKS["ZERO"];
+    }
+    if ((this.#getRegisterValue(dest) & 0x01) == 0) {
+      this.eflags |= EFLAGS_BITMASKS["PARITY"];
+    }
+    if (
+      Math.abs(this.#getRegisterValue(dest) >= Math.pow(2, 32)) &&
+      this.eflags & (EFLAGS_BITMASKS["SIGN"] == 0)
+    ) {
+      this.eflags |= EFLAGS_BITMASKS["CARRY"];
     }
 
     return 3; // Move to the next instruction (3 tokens: add, dest, src)
@@ -199,20 +378,43 @@ class CPU {
   #sub(tokens, pc) {
     const dest = tokens[pc + 1];
     const src = tokens[pc + 2];
+    let srcValue, destValue;
 
     // Subtract two registers
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
-      const srcValue = this.#getRegisterValue(src);
-      const destValue = this.#getRegisterValue(dest);
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
+      srcValue = this.#getRegisterValue(src);
+      destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue - srcValue);
     }
     // Subtract immediate value from register
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
-      const immediateValue = parseInt(src);
-      const destValue = this.#getRegisterValue(dest);
-      this.#setRegisterValue(dest, destValue - immediateValue);
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
+      srcValue = parseInt(src);
+      destValue = this.#getRegisterValue(dest);
+      this.#setRegisterValue(dest, destValue - srcValue);
     } else {
-      alert(`Unsupported sub operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported sub operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
+    }
+
+    this.eflags = 0;
+    if (
+      (srcValue >= 0 && destValue >= 0 && this.#getRegisterValue(dest) < 0) ||
+      (srcValue < 0 && destValue < 0 && this.#getRegisterValue(dest) >= 0)
+    ) {
+      this.eflags |= EFLAGS_BITMASKS["OVERFLOW"];
+    }
+    if (this.#getRegisterValue(dest) < 0) {
+      this.eflags |= EFLAGS_BITMASKS["SIGN"];
+    }
+    if (this.#getRegisterValue(dest) == 0) {
+      this.eflags |= EFLAGS_BITMASKS["ZERO"];
+    }
+    if ((this.#getRegisterValue(dest) & 0x01) == 0) {
+      this.eflags |= EFLAGS_BITMASKS["PARITY"];
+    }
+    if (dest < src) {
+      this.eflags |= EFLAGS_BITMASKS["CARRY"];
     }
 
     return 3; // Move to the next instruction (3 tokens: sub, dest, src)
@@ -222,11 +424,13 @@ class CPU {
     const dest = tokens[pc + 1];
 
     // Multiply register by another register
-    if (this.#isRegister(dest)) {
-      const destValue = this.#getRegisterValue(dest);
-      this.eax = this.eax * destValue;
+    if (this.#isImmediate(dest)) {
+      const destValue = parseInt(dest);
+      this.eax *= destValue;
     } else {
-      alert(`Unsupported mul operation: ${dest}`);
+      throw new SyntaxError(
+        `Unsupported mul operation: "${dest}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 2; // Move to the next instruction (2 tokens: mul, dest)
@@ -236,16 +440,20 @@ class CPU {
     const dest = tokens[pc + 1];
 
     // Divide register by another register
-    if (this.#isRegister(dest)) {
+    if (this.#isValidRegister(dest)) {
       const destValue = this.#getRegisterValue(dest);
       if (destValue === 0) {
-        alert(`Division by zero`);
+        throw new SyntaxError(
+          `Division by zero at line ${this.getCurrentLine()}`
+        );
         return 2;
       }
       this.eax = Math.floor(this.eax / destValue);
       this.edx = this.eax % destValue;
     } else {
-      alert(`Unsupported div operation: ${dest}`);
+      throw new SyntaxError(
+        `Unsupported div operation: "${dest}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 2; // Move to the next instruction (2 tokens: div, dest)
@@ -255,11 +463,13 @@ class CPU {
     const dest = tokens[pc + 1];
 
     // Increment register
-    if (this.#isRegister(dest)) {
+    if (this.#isValidRegister(dest)) {
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue + 1);
     } else {
-      alert(`Unsupported inc operation: ${dest}`);
+      throw new SyntaxError(
+        `Unsupported inc operation: "${dest}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 2; // Move to the next instruction (2 tokens: inc, dest)
@@ -269,11 +479,13 @@ class CPU {
     const dest = tokens[pc + 1];
 
     // Decrement register
-    if (this.#isRegister(dest)) {
+    if (this.#isValidRegister(dest)) {
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue - 1);
     } else {
-      alert(`Unsupported dec operation: ${dest}`);
+      throw new SyntaxError(
+        `Unsupported dec operation: "${dest}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 2; // Move to the next instruction (2 tokens: dec, dest)
@@ -286,27 +498,29 @@ class CPU {
     let leftValue, rightValue;
 
     // Compare two registers
-    if (this.#isRegister(left) && this.#isRegister(right)) {
+    if (this.#isValidRegister(left) && this.#isValidRegister(right)) {
       leftValue = this.#getRegisterValue(left);
       rightValue = this.#getRegisterValue(right);
     }
     // Compare register with immediate value
-    else if (this.#isRegister(left) && this.#isImmediate(right)) {
+    else if (this.#isValidRegister(left) && this.#isImmediate(right)) {
       leftValue = this.#getRegisterValue(left);
       rightValue = parseInt(right);
     } else {
-      alert(`Unsupported cmp operation: ${left}, ${right}`);
+      throw new SyntaxError(
+        `Unsupported cmp operation: "${left}, ${right}" at line ${this.getCurrentLine()}`
+      );
       return 3;
     }
 
     // Set EFLAGS based on comparison
     this.eflags = 0;
     if (leftValue === rightValue) {
-      this.eflags |= 0x40; // Zero flag
+      this.eflags |= EFLAGS_BITMASKS["ZERO"];
     } else if (leftValue > rightValue) {
-      this.eflags |= 0x800; // Greater flag
+      this.eflags |= EFLAGS_BITMASKS["OVERFLOW"];
     } else if (leftValue < rightValue) {
-      this.eflags |= 0x80; // Less flag
+      this.eflags |= EFLAGS_BITMASKS["SIGN"];
     }
 
     return 3; // Move to the next instruction (3 tokens: cmp, left, right)
@@ -317,17 +531,21 @@ class CPU {
 
     // Jump to label
     const labelIndex = this.#preparedTokens.indexOf(label + ":");
-    if (labelIndex !== -1) {
-      this.#pc = labelIndex;
-      return 0; // Do not increment PC
+
+    console.log(labelIndex);
+
+    if (labelIndex != -1) {
+      console.log("jmp to label" + label);
+      return labelIndex - this.eip + 1;
     } else {
-      alert(`Label not found: ${label}`);
-      return 2; // Move to the next instruction (2 tokens: jmp, label)
+      throw new SyntaxError(
+        `Label not found: "${label}" referenced at line ${this.getCurrentLine()}`
+      );
     }
   }
 
   #je(tokens, pc) {
-    if (this.eflags & 0x40) {
+    if (this.eflags & EFLAGS_BITMASKS["ZERO"]) {
       // Zero flag
       return this.#jmp(tokens, pc);
     }
@@ -335,7 +553,7 @@ class CPU {
   }
 
   #jne(tokens, pc) {
-    if (!(this.eflags & 0x40)) {
+    if (!(this.eflags & EFLAGS_BITMASKS["ZERO"])) {
       // Not zero flag
       return this.#jmp(tokens, pc);
     }
@@ -343,7 +561,7 @@ class CPU {
   }
 
   #jg(tokens, pc) {
-    if (this.eflags & 0x800) {
+    if (this.eflags & EFLAGS_BITMASKS["OVERFLOW"]) {
       // Greater flag
       return this.#jmp(tokens, pc);
     }
@@ -351,7 +569,9 @@ class CPU {
   }
 
   #jl(tokens, pc) {
-    if (this.eflags & 0x80) {
+    if (this.eflags & EFLAGS_BITMASKS["SIGN"]) {
+      console.log("signal!");
+
       // Less flag
       return this.#jmp(tokens, pc);
     }
@@ -363,18 +583,20 @@ class CPU {
     const src = tokens[pc + 2];
 
     // AND two registers
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
       const srcValue = this.#getRegisterValue(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue & srcValue);
     }
     // AND register with immediate value
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
       const immediateValue = parseInt(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue & immediateValue);
     } else {
-      alert(`Unsupported and operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported and operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 3; // Move to the next instruction (3 tokens: and, dest, src)
@@ -385,18 +607,20 @@ class CPU {
     const src = tokens[pc + 2];
 
     // OR two registers
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
       const srcValue = this.#getRegisterValue(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue | srcValue);
     }
     // OR register with immediate value
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
       const immediateValue = parseInt(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue | immediateValue);
     } else {
-      alert(`Unsupported or operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported or operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 3; // Move to the next instruction (3 tokens: or, dest, src)
@@ -407,18 +631,20 @@ class CPU {
     const src = tokens[pc + 2];
 
     // XOR two registers
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
       const srcValue = this.#getRegisterValue(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue ^ srcValue);
     }
     // XOR register with immediate value
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
       const immediateValue = parseInt(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue ^ immediateValue);
     } else {
-      alert(`Unsupported xor operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported xor operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 3; // Move to the next instruction (3 tokens: xor, dest, src)
@@ -428,11 +654,13 @@ class CPU {
     const dest = tokens[pc + 1];
 
     // NOT register
-    if (this.#isRegister(dest)) {
+    if (this.#isValidRegister(dest)) {
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, ~destValue);
     } else {
-      alert(`Unsupported not operation: ${dest}`);
+      throw new SyntaxError(
+        `Unsupported not operation: "${dest}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 2; // Move to the next instruction (2 tokens: not, dest)
@@ -443,18 +671,20 @@ class CPU {
     const src = tokens[pc + 2];
 
     // Shift left register by another register
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
       const srcValue = this.#getRegisterValue(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue << srcValue);
     }
     // Shift left register by immediate value
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
       const immediateValue = parseInt(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue << immediateValue);
     } else {
-      alert(`Unsupported shl operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported shl operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 3; // Move to the next instruction (3 tokens: shl, dest, src)
@@ -465,18 +695,20 @@ class CPU {
     const src = tokens[pc + 2];
 
     // Shift right register by another register
-    if (this.#isRegister(dest) && this.#isRegister(src)) {
+    if (this.#isValidRegister(dest) && this.#isValidRegister(src)) {
       const srcValue = this.#getRegisterValue(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue >> srcValue);
     }
     // Shift right register by immediate value
-    else if (this.#isRegister(dest) && this.#isImmediate(src)) {
+    else if (this.#isValidRegister(dest) && this.#isImmediate(src)) {
       const immediateValue = parseInt(src);
       const destValue = this.#getRegisterValue(dest);
       this.#setRegisterValue(dest, destValue >> immediateValue);
     } else {
-      alert(`Unsupported shr operation: ${dest}, ${src}`);
+      throw new SyntaxError(
+        `Unsupported shr operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 3; // Move to the next instruction (3 tokens: shr, dest, src)
@@ -486,16 +718,26 @@ class CPU {
     const src = tokens[pc + 1];
 
     // Push register onto stack
-    if (this.#isRegister(src)) {
+    if (this.#isValidRegister(src)) {
       this.#stack.push(this.#getRegisterValue(src));
       this.esp -= 4; // Update stack pointer
+
+      if (this.esp > this.#stackSize) {
+        throw new SyntaxError(`Stack overflow`);
+      }
     }
     // Push immediate value onto stack
     else if (this.#isImmediate(src)) {
       this.#stack.push(parseInt(src));
       this.esp -= 4; // Update stack pointer
+
+      if (this.esp > this.#stackSize) {
+        throw new SyntaxError(`Stack overflow`);
+      }
     } else {
-      alert(`Unsupported push operation: ${src}`);
+      throw new SyntaxError(
+        `Unsupported push operation: "${src}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 2; // Move to the next instruction (2 tokens: push, src)
@@ -505,16 +747,18 @@ class CPU {
     const dest = tokens[pc + 1];
 
     // Pop value from stack into register
-    if (this.#isRegister(dest)) {
+    if (this.#isValidRegister(dest)) {
       if (this.#stack.length > 0) {
         const value = this.#stack.pop();
         this.#setRegisterValue(dest, value);
         this.esp += 4; // Update stack pointer
       } else {
-        alert(`Stack underflow`);
+        throw new SyntaxError(`Stack underflow`);
       }
     } else {
-      alert(`Unsupported pop operation: ${dest}`);
+      throw new SyntaxError(
+        `Unsupported pop operation: "${dest}" at line ${this.getCurrentLine()}`
+      );
     }
 
     return 2; // Move to the next instruction (2 tokens: pop, dest)
@@ -524,7 +768,7 @@ class CPU {
     const label = tokens[pc + 1];
 
     // Push return address onto stack
-    this.#stack.push(this.#pc + 2);
+    this.#stack.push(this.eip + 2);
     this.esp -= 4; // Update stack pointer
 
     // Jump to label
@@ -534,21 +778,22 @@ class CPU {
   #ret(tokens, pc) {
     // Pop return address from stack
     if (this.#stack.length > 0) {
-      this.#pc = this.#stack.pop();
+      this.eip = this.#stack.pop();
       this.esp += 4; // Update stack pointer
       return 0; // Do not increment PC
     } else {
-      alert(`Stack underflow`);
+      throw new SyntaxError(`Stack underflow`);
       return 1; // Move to the next instruction (1 token: ret)
     }
   }
 
-  #isRegister(token) {
+  #isValidRegister(token) {
     return (
-      REGISTERS_32.includes(token) ||
-      REGISTERS_16.includes(token) ||
-      REGISTERS_8_HIGH.includes(token) ||
-      REGISTERS_8_LOW.includes(token)
+      (REGISTERS_32.includes(token) ||
+        REGISTERS_16.includes(token) ||
+        REGISTERS_8_HIGH.includes(token) ||
+        REGISTERS_8_LOW.includes(token)) &&
+      token != "eip"
     );
   }
 
@@ -556,5 +801,3 @@ class CPU {
     return !isNaN(parseInt(token));
   }
 }
-
-export default CPU;

@@ -6,17 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/assets/styles/reset.css">
     <link rel="stylesheet" href="/assets/styles/index.css">
-    <title>x86 Debugger</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+    <title>x86 Assembly Debugger</title>
 </head>
 
 <body>
     <header class="header">
+        <div class="header__icon"></div>
         <h1 class="header__title">x86 Assembly Debugger</h1>
     </header>
+    <div class="error_msg hidden">
+        <button class="error_msg__btn">x</button>
+        <p class="error_msg__p"></p>
+    </div>
     <main class="main">
         <section class="code_editor">
             <h2 class="section__title code_editor__title">Code Editor</h2>
             <textarea class="code_editor__textarea" name="code" id="code"></textarea>
+
         </section>
         <div class="emulation">
             <h2 class="section__title controls_title">Controls</h2>
@@ -24,8 +32,8 @@
                 <button class="controls__button controls__button--play" title="Play">
                     <img src="/assets/images/play.svg" alt="play">
                 </button>
-                <button class="controls__button controls__button--pause" title="Pause">
-                    <img src="/assets/images/pause.svg" alt="pause">
+                <button class="controls__button controls__button--stop" title="Stop">
+                    <img src="/assets/images/stop.svg" alt="stop">
                 </button>
                 <button class="controls__button controls__button--step" title="Step">
                     <img src="/assets/images/step.svg" alt="step">
@@ -34,17 +42,22 @@
                     <img src="/assets/images/reset.svg" alt="reset">
                 </button>
                 <div class="labeled_input">
-                    <label for="tick_speed">Tick Speed: 500 ms</label>
-                    <input class="tick_speed" type="range" name="tick_speed" id="tick_speed" min="20" max="1000" value="500"
-                        title="Tick Speed" tabindex="-1">
+                    <label class="tick_speed_label" for="tick_speed">Tick Speed: 500 ms</label>
+                    <input class="tick_speed" type="range" name="tick_speed" id="tick_speed" min="20" max="1000"
+                        value="500" title="Tick Speed" tabindex="-1">
                 </div>
             </section>
             <h2 class="section__title cpu_info_title">CPU State</h2>
             <div class="cpu_info">
                 <table class="cpu_info__table"></table>
+                <table class="cpu_registers_table">
+
+                </table>
             </div>
         </div>
     </main>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/asm/asm.min.js"></script>
     <script type="module" src="/assets/scripts/execute.js"></script>
 </body>
 
