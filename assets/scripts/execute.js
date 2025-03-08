@@ -93,7 +93,7 @@ playButton.addEventListener("click", (e) => {
 
   stopButton.style.opacity = "100%";
   e.currentTarget.style.opacity = "50%";
-  highlightLine(cpu.getCurrentLine(editor.getValue()));
+  highlightLine(cpu.getCurrentLine());
   timerId = setInterval(tick, tickInput.value);
 });
 
@@ -110,9 +110,9 @@ stopButton.addEventListener("click", (e) => {
 stepButton.addEventListener("click", (e) => {
   e.preventDefault();
 
-  highlightLine(cpu.getCurrentLine(editor.getValue()));
+  highlightLine(cpu.getCurrentLine());
   updateCPUInfo();
-  console.log(cpu.getCurrentLine(editor.getValue()));
+  console.log(cpu.getCurrentLine());
   errorContainer.classList.add("hidden");
 
   try {
@@ -213,7 +213,7 @@ function updateCPUInfo() {
 }
 
 function tick() {
-  highlightLine(cpu.getCurrentLine(editor.getValue()));
+  highlightLine(cpu.getCurrentLine());
 
   try {
     cpu.executeNextInstruction();

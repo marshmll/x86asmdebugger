@@ -38,12 +38,14 @@ export class CPU {
   eip;
   eflags;
   #stackSize;
+  #code;
   #preparedTokens;
   #microcode;
   #stack;
 
   constructor(stack_size) {
     this.#stackSize = stack_size;
+    this.#code = "";
     this.#preparedTokens = [];
     this.#microcode = {
       mov: this.#mov.bind(this),
@@ -78,6 +80,7 @@ export class CPU {
   }
 
   prepare(code) {
+    this.#code = code;
     this.#tokenize(code);
   }
 
@@ -112,7 +115,9 @@ export class CPU {
       this.eip += a;
     } else {
       throw new SyntaxError(
-        `Unknown instruction: "${instruction}" at line ${this.getCurrentLine()}`
+        `Unknown instruction: "${instruction}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
   }
@@ -143,8 +148,8 @@ export class CPU {
     return REGISTERS_32;
   }
 
-  getCurrentLine(code) {
-    const lines = code.split("\n");
+  getCurrentLine() {
+    const lines = this.#code.split("\n");
     let tokenCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
@@ -251,7 +256,7 @@ export class CPU {
           !this.#isImmediate(dest) &&
           !code.includes(dest + ":")
         ) {
-          throw new SyntaxError(`Invalid operand: ${dest} at line ${i + 1}`);
+          throw new SyntaxError(`Invalid operand "${dest}" at line ${i + 1}. If it is a label, check if it exists and spelling.`);
         }
 
         this.#preparedTokens.push(instruction, dest);
@@ -286,7 +291,7 @@ export class CPU {
       return this[`e${reg[0]}x`] & 0xff; // Lower 8 bits of 16-bit register
     } else {
       throw new SyntaxError(
-        `Invalid register: "${reg}" at line ${this.getCurrentLine()}`
+        `Invalid register: "${reg}" at line ${this.getCurrentLine() + 1}`
       );
       return 0;
     }
@@ -304,7 +309,7 @@ export class CPU {
       this[`e${reg[0]}x`] = (this[`e${reg[0]}x`] & 0xffffff00) | (value & 0xff); // Set lower 8 bits
     } else {
       throw new SyntaxError(
-        `Invalid register: "${reg}" at line ${this.getCurrentLine()}`
+        `Invalid register: "${reg}" at line ${this.getCurrentLine() + 1}`
       );
     }
   }
@@ -324,7 +329,9 @@ export class CPU {
       this.#setRegisterValue(dest, immediateValue);
     } else {
       throw new SyntaxError(
-        `Unsupported mov operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported mov operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -348,7 +355,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue + immediateValue);
     } else {
       throw new SyntaxError(
-        `Unsupported add operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported add operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -393,7 +402,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue - srcValue);
     } else {
       throw new SyntaxError(
-        `Unsupported sub operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported sub operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -424,12 +435,14 @@ export class CPU {
     const dest = tokens[pc + 1];
 
     // Multiply register by another register
-    if (this.#isImmediate(dest)) {
-      const destValue = parseInt(dest);
+    if (this.#isValidRegister(dest)) {
+      const destValue = this.#getRegisterValue(dest);
       this.eax *= destValue;
     } else {
       throw new SyntaxError(
-        `Unsupported mul operation: "${dest}" at line ${this.getCurrentLine()}`
+        `Unsupported mul operation: "${dest}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -444,7 +457,7 @@ export class CPU {
       const destValue = this.#getRegisterValue(dest);
       if (destValue === 0) {
         throw new SyntaxError(
-          `Division by zero at line ${this.getCurrentLine()}`
+          `Division by zero at line ${this.getCurrentLine() + 1}`
         );
         return 2;
       }
@@ -452,7 +465,9 @@ export class CPU {
       this.edx = this.eax % destValue;
     } else {
       throw new SyntaxError(
-        `Unsupported div operation: "${dest}" at line ${this.getCurrentLine()}`
+        `Unsupported div operation: "${dest}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -468,7 +483,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue + 1);
     } else {
       throw new SyntaxError(
-        `Unsupported inc operation: "${dest}" at line ${this.getCurrentLine()}`
+        `Unsupported inc operation: "${dest}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -484,7 +501,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue - 1);
     } else {
       throw new SyntaxError(
-        `Unsupported dec operation: "${dest}" at line ${this.getCurrentLine()}`
+        `Unsupported dec operation: "${dest}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -508,7 +527,9 @@ export class CPU {
       rightValue = parseInt(right);
     } else {
       throw new SyntaxError(
-        `Unsupported cmp operation: "${left}, ${right}" at line ${this.getCurrentLine()}`
+        `Unsupported cmp operation: "${left}, ${right}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
       return 3;
     }
@@ -539,7 +560,9 @@ export class CPU {
       return labelIndex - this.eip + 1;
     } else {
       throw new SyntaxError(
-        `Label not found: "${label}" referenced at line ${this.getCurrentLine()}`
+        `Label not found: "${label}" referenced at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
   }
@@ -595,7 +618,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue & immediateValue);
     } else {
       throw new SyntaxError(
-        `Unsupported and operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported and operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -619,7 +644,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue | immediateValue);
     } else {
       throw new SyntaxError(
-        `Unsupported or operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported or operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -643,7 +670,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue ^ immediateValue);
     } else {
       throw new SyntaxError(
-        `Unsupported xor operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported xor operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -659,7 +688,9 @@ export class CPU {
       this.#setRegisterValue(dest, ~destValue);
     } else {
       throw new SyntaxError(
-        `Unsupported not operation: "${dest}" at line ${this.getCurrentLine()}`
+        `Unsupported not operation: "${dest}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -683,7 +714,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue << immediateValue);
     } else {
       throw new SyntaxError(
-        `Unsupported shl operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported shl operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -707,7 +740,9 @@ export class CPU {
       this.#setRegisterValue(dest, destValue >> immediateValue);
     } else {
       throw new SyntaxError(
-        `Unsupported shr operation: "${dest}, ${src}" at line ${this.getCurrentLine()}`
+        `Unsupported shr operation: "${dest}, ${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -723,7 +758,9 @@ export class CPU {
       this.esp -= 4; // Update stack pointer
 
       if (this.esp > this.#stackSize) {
-        throw new SyntaxError(`Stack overflow`);
+        throw new SyntaxError(
+          `Stack overflow at line ${this.getCurrentLine() + 1}`
+        );
       }
     }
     // Push immediate value onto stack
@@ -732,11 +769,15 @@ export class CPU {
       this.esp -= 4; // Update stack pointer
 
       if (this.esp > this.#stackSize) {
-        throw new SyntaxError(`Stack overflow`);
+        throw new SyntaxError(
+          `Stack overflow at line ${this.getCurrentLine() + 1}`
+        );
       }
     } else {
       throw new SyntaxError(
-        `Unsupported push operation: "${src}" at line ${this.getCurrentLine()}`
+        `Unsupported push operation: "${src}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -753,11 +794,15 @@ export class CPU {
         this.#setRegisterValue(dest, value);
         this.esp += 4; // Update stack pointer
       } else {
-        throw new SyntaxError(`Stack underflow`);
+        throw new SyntaxError(
+          `Stack underflow at line ${this.getCurrentLine() + 1}`
+        );
       }
     } else {
       throw new SyntaxError(
-        `Unsupported pop operation: "${dest}" at line ${this.getCurrentLine()}`
+        `Unsupported pop operation: "${dest}" at line ${
+          this.getCurrentLine() + 1
+        }`
       );
     }
 
@@ -782,7 +827,9 @@ export class CPU {
       this.esp += 4; // Update stack pointer
       return 0; // Do not increment PC
     } else {
-      throw new SyntaxError(`Stack underflow`);
+      throw new SyntaxError(
+        `Stack underflow at line ${this.getCurrentLine() + 1}`
+      );
       return 1; // Move to the next instruction (1 token: ret)
     }
   }
