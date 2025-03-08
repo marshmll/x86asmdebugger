@@ -256,7 +256,11 @@ export class CPU {
           !this.#isImmediate(dest) &&
           !code.includes(dest + ":")
         ) {
-          throw new SyntaxError(`Invalid operand "${dest}" at line ${i + 1}. If it is a label, check if it exists and spelling.`);
+          throw new SyntaxError(
+            `Invalid operand "${dest}" at line ${
+              i + 1
+            }. If it is a label, check if it exists and spelling.`
+          );
         }
 
         this.#preparedTokens.push(instruction, dest);
@@ -424,7 +428,7 @@ export class CPU {
     if ((this.#getRegisterValue(dest) & 0x01) == 0) {
       this.eflags |= EFLAGS_BITMASKS["PARITY"];
     }
-    if (dest < src) {
+    if (srcValue > destValue) {
       this.eflags |= EFLAGS_BITMASKS["CARRY"];
     }
 
@@ -536,12 +540,23 @@ export class CPU {
 
     // Set EFLAGS based on comparison
     this.eflags = 0;
-    if (leftValue === rightValue) {
-      this.eflags |= EFLAGS_BITMASKS["ZERO"];
-    } else if (leftValue > rightValue) {
+    if (
+      (leftValue >= 0 && rightValue >= 0 && leftValue - rightValue < 0) ||
+      (leftValue < 0 && rightValue < 0 && leftValue - rightValue >= 0)
+    ) {
       this.eflags |= EFLAGS_BITMASKS["OVERFLOW"];
-    } else if (leftValue < rightValue) {
+    }
+    if (leftValue - rightValue < 0) {
       this.eflags |= EFLAGS_BITMASKS["SIGN"];
+    }
+    if (leftValue - rightValue == 0) {
+      this.eflags |= EFLAGS_BITMASKS["ZERO"];
+    }
+    if (((leftValue - rightValue) & 0x01) == 0) {
+      this.eflags |= EFLAGS_BITMASKS["PARITY"];
+    }
+    if (rightValue > leftValue) {
+      this.eflags |= EFLAGS_BITMASKS["CARRY"];
     }
 
     return 3; // Move to the next instruction (3 tokens: cmp, left, right)
