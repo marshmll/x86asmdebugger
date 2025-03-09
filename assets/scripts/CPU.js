@@ -455,6 +455,11 @@ export class CPU {
     if (this.#isValidRegister(dest)) {
       const destValue = this.#getRegisterValue(dest);
       this.eax *= destValue;
+
+      if (this.eax >= Math.pow(2, 32)) {
+        this.eflags |= EFLAGS_BITMASKS["OVERFLOW"];
+        this.eax &= Math.pow(2, 32) - 1;
+      }
     } else {
       throw new SyntaxError(
         `Unsupported mul operation: "${dest}" at line ${
