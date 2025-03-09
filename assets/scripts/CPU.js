@@ -476,10 +476,9 @@ export class CPU {
         throw new SyntaxError(
           `Division by zero at line ${this.getCurrentLine() + 1}`
         );
-        return 2;
       }
-      this.eax = Math.floor(this.eax / destValue);
       this.edx = this.eax % destValue;
+      this.eax = Math.floor(this.eax / destValue);
     } else {
       throw new SyntaxError(
         `Unsupported div operation: "${dest}" at line ${
