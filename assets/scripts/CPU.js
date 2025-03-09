@@ -1,5 +1,5 @@
-export const B = 8;
-export const MB = 1024 * B;
+export const KB = 1024 * 1;
+export const MB = 1024 * KB;
 
 const REGISTERS_32 = [
   "eax",
@@ -75,6 +75,7 @@ export class CPU {
       pop: this.#pop.bind(this),
       call: this.#call.bind(this),
       ret: this.#ret.bind(this),
+      hlt: this.#hlt.bind(this),
     };
     this.reset();
   }
@@ -115,7 +116,7 @@ export class CPU {
       this.eip += a;
     } else {
       throw new SyntaxError(
-        `Unknown instruction: "${instruction}" at line ${
+        `Unknown or unsupported instruction: "${instruction}" at line ${
           this.getCurrentLine() + 1
         }`
       );
@@ -136,16 +137,16 @@ export class CPU {
     this.#stack = [];
   }
 
-  getPC() {
-    return this.eip;
-  }
-
   getRegisterValue(register) {
     return this[register] & (Math.pow(2, 32) - 1);
   }
 
   getAvailableRegisters() {
     return REGISTERS_32;
+  }
+
+  isFlagSet(flag_bitmask) {
+    return (this.eflags & flag_bitmask) > 0 ? 1 : 0;
   }
 
   getCurrentLine() {
@@ -206,45 +207,57 @@ export class CPU {
           throw new SyntaxError(
             `Missing comma in instruction: "${line}" at line ${
               i + 1
-            }\nExpected format: ${instruction} dest, src`
+            }\nExpected format: "${instruction} dest, src"`
           );
         }
 
-        const [dest, src] = operands.split(",").map((op) => op.trim());
+        const ops = operands.split(",").map((op) => op.trim());
+
+        if (ops.length != 2) {
+          throw new SyntaxError(
+            `Invalid operands in instruction: "${line}" at line ${
+              i + 1
+            }\nExpected format: "${instruction} dest, src"`
+          );
+        }
+
+        const [dest, src] = ops;
 
         if (!dest || !src) {
           throw new SyntaxError(
             `Invalid operands in instruction: "${line}" at line ${
               i + 1
-            }\nExpected format: ${instruction} dest, src`
+            }\nExpected format: "${instruction} dest, src"`
           );
         }
 
         // Validate operand types
         if (!this.#isValidRegister(dest) && !this.#isImmediate(dest)) {
           throw new SyntaxError(
-            `Invalid destination operand: ${dest} at line ${i + 1}`
+            `Invalid destination operand: "${dest}" at line ${i + 1}`
           );
         }
         if (!this.#isValidRegister(src) && !this.#isImmediate(src)) {
           throw new SyntaxError(
-            `Invalid source operand: ${src} at line ${i + 1}`
+            `Invalid source operand: "${src}" at line ${i + 1}`
           );
         }
 
         this.#preparedTokens.push(instruction, dest, src);
+      } else if (this.#isNoArgsInstruction(instruction)) {
+        this.#preparedTokens.push(instruction);
       } else {
         // Handle instructions without commas
 
         if (!this.#microcode[tokens[0]]) {
           throw new SyntaxError(
-            `Unknown instruction: ${line} at line ${i + 1}`
+            `Unknown or unsupported instruction: "${line}" at line ${i + 1}`
           );
         }
 
         if (tokens.length !== 2) {
           throw new SyntaxError(
-            `Invalid number of operands in instruction: ${line} at line ${
+            `Invalid number of operands in instruction: "${line}" at line ${
               i + 1
             }`
           );
@@ -845,8 +858,11 @@ export class CPU {
       throw new SyntaxError(
         `Stack underflow at line ${this.getCurrentLine() + 1}`
       );
-      return 1; // Move to the next instruction (1 token: ret)
     }
+  }
+
+  #hlt(tokens, pc) {
+    return 0; // Halt the processor.
   }
 
   #isValidRegister(token) {
@@ -861,5 +877,10 @@ export class CPU {
 
   #isImmediate(token) {
     return !isNaN(parseInt(token));
+  }
+
+  #isNoArgsInstruction(instruction) {
+    const noArgsInstructions = ["ret", "hlt"];
+    return noArgsInstructions.includes(instruction);
   }
 }

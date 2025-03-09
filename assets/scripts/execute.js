@@ -1,53 +1,10 @@
-import { CPU, EFLAGS_BITMASKS, B, MB } from "./CPU.js";
-
-const editor = CodeMirror.fromTextArea(document.getElementById("code"), {
-  mode: "text/x-asm", // Assembly syntax highlighting
-  lineNumbers: true, // Show line numbers
-  indentUnit: 4, // Set indentation to 4 spaces
-  autofocus: true, // Auto-focus the editor
-});
-
-// Function to highlight a line
-function highlightLine(lineNumber) {
-  // Clear previous highlights
-  clearHighlights();
-
-  // Add the highlight class to the specified line
-  editor.addLineClass(lineNumber, "wrap", "highlighted-line");
-}
-
-// Function to clear highlights
-function clearHighlights() {
-  const lineCount = editor.lineCount();
-  for (let i = 0; i < lineCount; i++) {
-    editor.removeLineClass(i, "wrap", "highlighted-line");
-  }
-}
-
-// Save editor value to local storage
-function saveEditorValue() {
-  const value = editor.getValue();
-  localStorage.setItem("editorValue", value);
-}
-
-// Restore editor value from local storage
-function restoreEditorValue() {
-  const savedValue = localStorage.getItem("editorValue");
-  if (savedValue) {
-    editor.setValue(savedValue);
-  }
-}
-
-// Clear editor value from local storage
-function clearEditorValue() {
-  localStorage.removeItem("editorValue");
-}
-
-// Restore editor value when the page loads
-restoreEditorValue();
+import { CPU, EFLAGS_BITMASKS, MB } from "./CPU.js";
 
 let timerId = 0;
-const cpu = new CPU(1 * B);
+
+const cpu = new CPU(1 * MB);
+cpu.reset();
+
 const codeEditor = document.querySelector(".code_editor");
 const errorContainer = document.querySelector(".error_msg");
 const errorCloseBtn = document.querySelector(".error_msg__btn");
@@ -62,11 +19,21 @@ const cpuTable = document.querySelector(".cpu_info__table");
 const cpuRegistersTable = document.querySelector(".cpu_registers_table");
 const registers = cpu.getAvailableRegisters();
 
+const editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+  mode: "text/x-asm",
+  lineNumbers: true,
+  indentUnit: 4,
+  autofocus: true,
+});
+
+restoreEditorValue();
+updateCPUInfo();
+
 codeEditor.addEventListener("input", (e) => {
   cpu.reset();
   clearHighlights();
   clearEditorValue();
-  saveEditorValue(); // Save editor value on input
+  saveEditorValue();
 });
 
 errorCloseBtn.addEventListener("click", (e) => {
@@ -93,7 +60,6 @@ playButton.addEventListener("click", (e) => {
 
   stopButton.style.opacity = "100%";
   e.currentTarget.style.opacity = "50%";
-  highlightLine(cpu.getCurrentLine());
   timerId = setInterval(tick, tickInput.value);
 });
 
@@ -110,13 +76,13 @@ stopButton.addEventListener("click", (e) => {
 stepButton.addEventListener("click", (e) => {
   e.preventDefault();
 
-  highlightLine(cpu.getCurrentLine());
-  updateCPUInfo();
-  console.log(cpu.getCurrentLine());
   errorContainer.classList.add("hidden");
+
+  updateCPUInfo();
 
   try {
     cpu.prepare(editor.getValue());
+    highlightLine(cpu.getCurrentLine());
     cpu.executeNextInstruction();
   } catch (e) {
     errorParagraph.textContent = e;
@@ -130,13 +96,6 @@ resetButton.addEventListener("click", (e) => {
 
   cpu.reset();
   errorContainer.classList.add("hidden");
-  try {
-    cpu.prepare(editor.getValue());
-  } catch (e) {
-    errorParagraph.textContent = e;
-    errorContainer.classList.remove("hidden");
-    return;
-  }
 
   clearHighlights();
 
@@ -147,7 +106,34 @@ resetButton.addEventListener("click", (e) => {
   stopButton.style.opacity = "100%";
 });
 
-updateCPUInfo();
+function highlightLine(lineNumber) {
+  clearHighlights();
+
+  editor.addLineClass(lineNumber, "wrap", "highlighted-line");
+}
+
+function clearHighlights() {
+  const lineCount = editor.lineCount();
+  for (let i = 0; i < lineCount; i++) {
+    editor.removeLineClass(i, "wrap", "highlighted-line");
+  }
+}
+
+function saveEditorValue() {
+  const value = editor.getValue();
+  localStorage.setItem("editorValue", value);
+}
+
+function restoreEditorValue() {
+  const savedValue = localStorage.getItem("editorValue");
+  if (savedValue) {
+    editor.setValue(savedValue);
+  }
+}
+
+function clearEditorValue() {
+  localStorage.removeItem("editorValue");
+}
 
 function updateCPUInfo() {
   let table_rows = registers
@@ -198,14 +184,12 @@ function updateCPUInfo() {
             <th title="Overflow Flag">OF</th>
         </tr>
         <tr>
-            <td>${(cpu.eflags & EFLAGS_BITMASKS["CARRY"]) > 0 ? 1 : 0}</td>
-            <td>${(cpu.eflags & EFLAGS_BITMASKS["PARITY"]) > 0 ? 1 : 0}</td>
-            <td>${
-              (cpu.eflags & EFLAGS_BITMASKS["AUXILIARY_CARRY"]) > 0 ? 1 : 0
-            }</td>
-            <td>${(cpu.eflags & EFLAGS_BITMASKS["ZERO"]) > 0 ? 1 : 0}</td>
-            <td>${(cpu.eflags & EFLAGS_BITMASKS["SIGN"]) > 0 ? 1 : 0}</td>
-            <td>${(cpu.eflags & EFLAGS_BITMASKS["OVERFLOW"]) > 0 ? 1 : 0}</td>
+            <td>${cpu.isFlagSet(EFLAGS_BITMASKS["CARRY"])}</td>
+            <td>${cpu.isFlagSet(EFLAGS_BITMASKS["PARITY"])}</td>
+            <td>${cpu.isFlagSet(EFLAGS_BITMASKS["AUXILIARY_CARRY"])}</td>
+            <td>${cpu.isFlagSet(EFLAGS_BITMASKS["ZERO"])}</td>
+            <td>${cpu.isFlagSet(EFLAGS_BITMASKS["SIGN"])}</td>
+            <td>${cpu.isFlagSet(EFLAGS_BITMASKS["OVERFLOW"])}</td>
         </tr>
   `;
 
