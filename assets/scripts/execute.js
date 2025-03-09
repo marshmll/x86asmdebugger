@@ -34,6 +34,7 @@ codeEditor.addEventListener("input", (e) => {
   clearHighlights();
   clearEditorValue();
   saveEditorValue();
+  if (timerId !== 0) clearTimeout(timerId);
 });
 
 errorCloseBtn.addEventListener("click", (e) => {
