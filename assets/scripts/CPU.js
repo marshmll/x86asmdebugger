@@ -86,16 +86,16 @@ export class CPU {
   }
 
   executeNextInstruction() {
-    if (this.#preparedTokens.length === 0) return;
+    if (this.#preparedTokens.length === 0) return false;
 
-    if (this.eip >= this.#preparedTokens.length) return;
+    if (this.eip >= this.#preparedTokens.length) return false;
 
     let instruction = this.#preparedTokens[this.eip];
 
     // Ignore labels
     if (instruction.endsWith(":")) {
       this.eip++;
-      return;
+      return true;
     }
 
     // Strip inline comments (everything after ';')
@@ -104,7 +104,7 @@ export class CPU {
     // Skip empty lines after stripping comments
     if (instruction.length === 0) {
       this.eip++;
-      return;
+      return true;
     }
 
     // Get the instruction handler
@@ -121,6 +121,8 @@ export class CPU {
         }`
       );
     }
+
+    return true;
   }
 
   reset() {
@@ -211,9 +213,13 @@ export class CPU {
           );
         }
 
-        const ops = operands.split(",").map((op) => op.trim());
+        const ops = operands.split(",").map((op) => {
+          op = op.split(";")[0];
+          op = op.trim();
+          return op;
+        });
 
-        if (ops.length != 2) {
+        if (ops.length < 2) {
           throw new SyntaxError(
             `Invalid operands in instruction: "${line}" at line ${
               i + 1
@@ -255,7 +261,7 @@ export class CPU {
           );
         }
 
-        if (tokens.length !== 2) {
+        if (tokens.length < 2) {
           throw new SyntaxError(
             `Invalid number of operands in instruction: "${line}" at line ${
               i + 1
@@ -263,7 +269,7 @@ export class CPU {
           );
         }
 
-        const dest = tokens[1];
+        const dest = tokens[1].split(";")[0].trim();
         if (
           !this.#isValidRegister(dest) &&
           !this.#isImmediate(dest) &&

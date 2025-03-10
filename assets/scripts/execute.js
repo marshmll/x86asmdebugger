@@ -84,7 +84,8 @@ stepButton.addEventListener("click", (e) => {
   try {
     cpu.prepare(editor.getValue());
     highlightLine(cpu.getCurrentLine());
-    cpu.executeNextInstruction();
+    if (!cpu.executeNextInstruction()) e.currentTarget.style.opacity = "50%";
+    else e.currentTarget.style.opacity = "100%";
   } catch (e) {
     errorParagraph.textContent = e;
     errorContainer.classList.remove("hidden");
@@ -104,7 +105,8 @@ resetButton.addEventListener("click", (e) => {
   timerId = 0;
   updateCPUInfo();
   playButton.style.opacity = "100%";
-  stopButton.style.opacity = "100%";
+  stopButton.style.opacity = "50%";
+  stepButton.style.opacity = "100%";
 });
 
 function highlightLine(lineNumber) {
@@ -201,7 +203,12 @@ function tick() {
   highlightLine(cpu.getCurrentLine());
 
   try {
-    cpu.executeNextInstruction();
+    if (!cpu.executeNextInstruction()) {
+      stepButton.style.opacity = "50%";
+      clearTimeout(timerId);
+    } else {
+      stepButton.style.opacity = "100%";
+    }
   } catch (e) {
     errorParagraph.textContent = e;
     errorContainer.classList.remove("hidden");
